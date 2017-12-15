@@ -11,7 +11,9 @@
 # todo: 异常处理、异常监控、时间性能、数据库存储、分层、使用框架
 
 import gzip
+import time
 import re
+import threading
 from urllib import request
 from io import BytesIO
 from bs4 import BeautifulSoup
@@ -21,10 +23,13 @@ regions = ['pudong', 'baoshan', 'minhang', 'putuo', 'xuhui', 'yangpu', \
             'hongkou', 'huangpu', 'jingan', 'luwan', 'changning']
 BASE_URL = 'http://newhouse.sh.fang.com'
 
+# house_lists的lock
+# lock = threading.Lock()
+
 spidered_list = []
 
-# 获取新房list页面的大致信息
-def spider_house_list(url):
+# 执行list spider
+def do_spider_house_list(url):
     if url in spidered_list:
         return []
     spidered_list.append(url)
@@ -34,29 +39,36 @@ def spider_house_list(url):
     list_items = html_bs4.find(id='newhouse_loupai_list').find_all('div', 'nlc_details')
     # 从每个item实体提取 名称、状态、价格、位置、电话
     for item in list_items:
-        house_dict = {}
-        house_dict['name'] = item.find('div', 'nlcd_name').a.string.strip()
-        house_dict['status'] = item.find('div', 'fangyuan').span.string
-        item_price = item.find('div', 'nhouse_price')
-        house_dict['price'] = item_price.text.strip() if item_price else None
-        house_dict['location'] = item.find('div', 'address').a['title']
-        item_phone = item.find('div', 'tel')
-        house_dict['phone'] = item_phone.p.text if item_phone else None 
-        # 获取每个item的detail信息
-        item_link = item.find('div', 'nlcd_name').a['href']
-        house_detail = spider_house_detail(item_link)
-        house_dict['news'] = house_detail['news']
-        house_dict['size'] = house_detail['size']
-        house_lists.append(house_dict)
+        t = threading.Thread(target=spider_house_list, args=(item, house_lists))
+        t.start()
+        t.join()
     # 分页递归
     pages_root = html_bs4.find('div', 'page')
     if pages_root:
         next_page = pages_root.find('li', 'fr').find('a', 'next')
         if next_page:
-            return (house_lists + spider_house_list(BASE_URL + next_page['href']))
+            return house_lists + do_spider_house_list(BASE_URL + next_page['href'])
         else:
             return house_lists
     return house_lists
+
+# 新房list信息提取
+def spider_house_list(item, house_lists):
+    print('%s is running' % threading.current_thread().name)
+    house_dict = {}
+    house_dict['name'] = item.find('div', 'nlcd_name').a.string.strip()
+    house_dict['status'] = item.find('div', 'fangyuan').span.string
+    item_price = item.find('div', 'nhouse_price')
+    house_dict['price'] = item_price.text.strip() if item_price else None
+    house_dict['location'] = item.find('div', 'address').a['title']
+    item_phone = item.find('div', 'tel')
+    house_dict['phone'] = item_phone.p.text if item_phone else None 
+    # 获取每个item的detail信息
+    item_link = item.find('div', 'nlcd_name').a['href']
+    house_detail = spider_house_detail(item_link)
+    house_dict['news'] = house_detail['news']
+    house_dict['size'] = house_detail['size']
+    house_lists.append(house_dict)
 
 # 获取新房详情信息：房型、动态
 def spider_house_detail(url):
@@ -108,10 +120,13 @@ def get_html_bs4(url):
     return html
 
 if __name__ == '__main__':
+    start_time = time.time()
     for region in regions:
         print('----------------------' + region + ' start---------------------\n')
         base_url = BASE_URL + '/house/s/' + region + '/a77-b82/'
-        house_data = spider_house_list(base_url)
+        house_data = do_spider_house_list(base_url)
         print(house_data)
         print('----------------------' + region + ' end-----------------------\n')
+    end_time = time.time()
+    print((end_time - start_time)/60)
         
