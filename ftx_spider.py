@@ -38,9 +38,13 @@ def do_spider_house_list(url):
     # 获取每个item实体
     list_items = html_bs4.find(id='newhouse_loupai_list').find_all('div', 'nlc_details')
     # 从每个item实体提取 名称、状态、价格、位置、电话
+    threads = []
     for item in list_items:
         t = threading.Thread(target=spider_house_list, args=(item, house_lists))
+        threads.append(t)
+    for t in threads:
         t.start()
+    for t in threads:
         t.join()
     # 分页递归
     pages_root = html_bs4.find('div', 'page')
