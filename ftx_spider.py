@@ -14,19 +14,21 @@ import gzip
 import time
 import re
 import threading
+from exception_output import ExceptionOutput
 from urllib import request
 from urllib import error
 from io import BytesIO
 from bs4 import BeautifulSoup
 
-#房天下新房按区进行爬取
+# 房天下新房按区进行爬取
 regions = ['pudong', 'baoshan', 'minhang', 'putuo', 'xuhui', 'yangpu', \
             'hongkou', 'huangpu', 'jingan', 'luwan', 'changning']
 BASE_URL = 'http://newhouse.sh.fang.com'
 
-lock = threading.Lock()
-
 spidered_list = []
+
+exception = ExceptionOutput()
+
 
 def do_spider_house_list(url):
     '''
@@ -60,6 +62,7 @@ def do_spider_house_list(url):
             return house_lists
     return house_lists
 
+
 def spider_house_list(item, house_lists):
     '''
     新房list信息提取
@@ -81,6 +84,7 @@ def spider_house_list(item, house_lists):
     print(house_dict)
     house_lists.append(house_dict)
 
+
 def spider_house_detail(url):
     '''
     获取新房详情信息：房型、动态
@@ -93,6 +97,7 @@ def spider_house_detail(url):
     news_link = html_bs4.find('a', title=re.compile(r'动态$'))['href']
     house_detail['news'] = spider_detail_news(news_link)
     return house_detail
+
 
 def spider_detail_news(url):
     '''
@@ -126,6 +131,7 @@ def spider_detail_news(url):
                 house_news[info].append(tmp_dict)
     return house_news   
 
+
 def get_html_bs4(url):
     '''
     获取每个链接的BeautifulSoup格式化网页内容
@@ -142,46 +148,16 @@ def get_html_bs4(url):
         html = BeautifulSoup(html, 'html.parser', from_encoding='gb2312')
     except (error.HTTPError, error.URLError) as e:
         print('读取url数据出现错误：', e)
-        exception_write_log(url, e)
+        exception.spider_exception(url, e)
         return
     return html
 
-def locker(func):
-    '''
-    锁decorator
-    '''
-    def wrapper(*args, **kw):
-        lock.acquire()
-        func(*args, **kw)
-        lock.release()
-    return wrapper
-
-@locker
-def exception_write_log(url, error):
-    '''
-    记录爬取过程中出错的url及错误
-    '''
-    f = open('exception_log.txt', 'a')
-    line = '%s:\n%s\n' % (url, error)
-    f.write(line)
-    f.close()
-
-@locker
-def exception_log_clear():
-    '''
-    清空上次异常日志
-    '''
-    f = open('exception_log.txt', 'w')
-    f.truncate()
-    f.close()
-
 
 if __name__ == '__main__':
-    exception_log_clear()
+    exception.exception_log_clear('spider_exception.txt')
     start_time = time.time()
     for region in regions:
         base_url = BASE_URL + '/house/s/' + region + '/a77-b82/'
         house_data = do_spider_house_list(base_url)
     end_time = time.time()
     print((end_time - start_time)/60)
-        
