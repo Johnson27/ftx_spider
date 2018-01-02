@@ -11,10 +11,11 @@
 # todo: 数据库存储、分层、使用框架
 
 import gzip
-import time
+import timeit
 import re
 import threading
 from exception_output import ExceptionOutput
+from sqlite_wrapper import SqliteWrapper
 from urllib import request
 from urllib import error
 from io import BytesIO
@@ -26,14 +27,19 @@ regions = ['pudong', 'baoshan', 'minhang', 'putuo', 'xuhui', 'yangpu', \
 BASE_URL = 'http://newhouse.sh.fang.com'
 
 spidered_list = []
+news_id = 0
 
 exception = ExceptionOutput()
 
+db_ftx_xf = SqliteWrapper('ftx_xf.db')
+db_ftx_xf.create_table('create table xf_info(name TEXT PRIMARY KEY NOT NULL, status TEXT, price TEXT, location TEXT, phone TEXT, size TEXT)')
+db_ftx_xf.create_table('create table news(id INT PRIMARY KEY NOT NULL, news_time TEXT, type INT, house_name TEXT, title TEXT, content TEXT)')
+
 
 def do_spider_house_list(url):
-    '''
+    """
     执行list spider
-    '''
+    """
     if url in spidered_list:
         return []
     spidered_list.append(url)
@@ -57,16 +63,16 @@ def do_spider_house_list(url):
     if pages_root:
         next_page = pages_root.find('li', 'fr').find('a', 'next')
         if next_page:
-            return house_lists + do_spider_house_list(BASE_URL + next_page['href'])
+            return do_spider_house_list(BASE_URL + next_page['href'])
         else:
-            return house_lists
-    return house_lists
+            return
+    return
 
 
 def spider_house_list(item, house_lists):
-    '''
+    """
     新房list信息提取
-    '''
+    """
     print('%s is running' % threading.current_thread().name)
     house_dict = {}
     house_dict['name'] = item.find('div', 'nlcd_name').a.string.strip()
@@ -78,31 +84,34 @@ def spider_house_list(item, house_lists):
     house_dict['phone'] = item_phone.p.text if item_phone else None 
     # 获取每个item的detail信息
     item_link = item.find('div', 'nlcd_name').a['href']
-    house_detail = spider_house_detail(item_link)
-    house_dict['news'] = house_detail['news']
+    house_detail = spider_house_detail(item_link, house_dict['name'])
     house_dict['size'] = house_detail['size']
+    db_ftx_xf.insert('xf_info', house_dict)
+    house_dict['news'] = house_detail['news']
     print(house_dict)
     house_lists.append(house_dict)
 
 
-def spider_house_detail(url):
-    '''
+def spider_house_detail(url, name):
+    """
     获取新房详情信息：房型、动态
-    '''
+    """
     house_detail = {}
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
         return
     house_detail['size'] = html_bs4.find('div', 'zlhx').text.strip()
     news_link = html_bs4.find('a', title=re.compile(r'动态$'))['href']
-    house_detail['news'] = spider_detail_news(news_link)
+    if 'http' not in news_link:
+        news_link = 'http://newhouse.sh.fang.com/' + news_link
+    house_detail['news'] = spider_detail_news(news_link, name)
     return house_detail
 
 
-def spider_detail_news(url):
-    '''
+def spider_detail_news(url, name):
+    """
     获取新房动态：动态、预售证、开盘
-    '''
+    """
     house_news = {}
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
@@ -115,7 +124,12 @@ def spider_detail_news(url):
         news_items = news_items_root.find('ul', 'zs-list').find_all('li')
         for item in news_items:
             tmp_dict = {}
-            tmp_dict['time'] = item.find('div', 'sLTime').text.strip()
+            global news_id
+            tmp_dict['id'] = news_id
+            news_id += 1
+            tmp_dict['news_time'] = item.find('div', 'sLTime').text.strip()
+            tmp_dict['house_name'] = name
+            tmp_dict['type'] = info
             if info == 'blog':
                 tmp_dict['title'] = item.h2.a.string
                 tmp_dict['content'] = item.p.text.strip()
@@ -124,6 +138,7 @@ def spider_detail_news(url):
             else:
                 pinfo = item.find_all('p')
                 tmp_dict['content'] = pinfo[len(pinfo) - 1].string
+            db_ftx_xf.insert('news', tmp_dict)
             if info == 'sale':
                 if tmp_dict not in house_news[info]:
                     house_news[info].append(tmp_dict)
@@ -133,9 +148,9 @@ def spider_detail_news(url):
 
 
 def get_html_bs4(url):
-    '''
+    """
     获取每个链接的BeautifulSoup格式化网页内容
-    '''
+    """
     try:
         response = request.urlopen(url)
         if response.headers.get('Content-Encoding') == 'gzip':  # gzip压缩时先解压
@@ -150,14 +165,23 @@ def get_html_bs4(url):
         print('读取url数据出现错误：', e)
         exception.spider_exception(url, e)
         return
+    except error as e:
+        exception.spider_exception(url, e)
+        return
     return html
 
 
-if __name__ == '__main__':
+def clear_exception_log():
     exception.exception_log_clear('spider_exception.txt')
-    start_time = time.time()
+    exception.exception_log_clear('sqlite_exception.txt')
+
+
+def spider_run():
+    clear_exception_log()
     for region in regions:
         base_url = BASE_URL + '/house/s/' + region + '/a77-b82/'
-        house_data = do_spider_house_list(base_url)
-    end_time = time.time()
-    print((end_time - start_time)/60)
+        do_spider_house_list(base_url)
+
+
+if __name__ == '__main__':
+    print(timeit.timeit('spider_run()', setup='from __main__ import spider_run'))

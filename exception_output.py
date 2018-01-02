@@ -2,6 +2,8 @@ import threading
 
 
 lock = threading.Lock()
+
+
 def locker(func):
     """
     锁decorator

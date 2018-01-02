@@ -1,6 +1,9 @@
 import sqlite3
+import threading
 from exception_output import ExceptionOutput
 exception = ExceptionOutput()
+lock = threading.Lock()
+
 
 class SqliteWrapper(object):
     """
@@ -8,18 +11,40 @@ class SqliteWrapper(object):
     """
     def __init__(self, path):
         self.path = path
-        self.conn = self.init_conn()
-        self.cursor = self.conn.cursor()
 
-    def init_conn(self):
+    def get_conn(self):
         """
         获取数据库连接
         """
         try:
-            conn = sqlite3.connect(self.path)
+            conn = sqlite3.connect(self.path, check_same_thread=False)
             return conn
         except sqlite3.Error as e:
-            exception.sqlite_exception(e)
+            exception.sqlite_exception("get conn error: %s" % e)
+
+    def close_con(self, conn):
+        """
+        关闭数据库连接
+        """
+        conn.close()
+
+    def execute_command(self, command):
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        lock.acquire()
+        try:
+            cursor.execute(command)
+            if 'insert' in command:
+                conn.commit()
+                return 0
+            if 'select' in command:
+                return cursor.fetchall()
+        except sqlite3.Error as e:
+            exception.sqlite_exception("execute command error: %s" % e)
+            return -1
+        finally:
+            self.close_con(conn)
+            lock.release()
 
     def create_table(self, command):
         """
@@ -28,11 +53,7 @@ class SqliteWrapper(object):
         if not command:
             exception.sqlite_exception('Empty sql')
             return -1
-        try:
-            self.cursor.execute(command)
-        except sqlite3.Error as e:
-            exception.sqlite_exception(e)
-            return -2
+        self.execute_command(command)
         return 0
 
     def insert(self, table, data_dict):
@@ -48,16 +69,7 @@ class SqliteWrapper(object):
         columns = columns[1:]
         values = values[1:]
         command = 'insert into {table} ({columns}) values ({values})'.format(table=table,columns=columns,values=values)
-        try:
-            self.cursor.execute(command)
-            self.conn.commit()
-        except sqlite3.IntegrityError as e:
-            exception.sqlite_exception(e)
-            return -1
-        except sqlite3.Error as e:
-            exception.sqlite_exception(e)
-            return -2
-        return 0
+        return self.execute_command(command)
 
     def delete(self):
         pass
@@ -65,25 +77,13 @@ class SqliteWrapper(object):
     def update(self):
         pass
 
-    # select */column1 column2 column3 from table where condition
     def select(self, table, columns='*', condition=''):
         """
         获取数据库记录
         """
         condition = ' where'.join(condition) if condition else ''
         command = 'select {columns} from {table}{condition}'.format(columns=columns, table=table, condition=condition)
-        try:
-            self.cursor.execute(command)
-            return self.cursor.fetchall()
-        except sqlite3.Error as e:
-            exception.sqlite_exception(e)
-            return -1
-
-    def close_con(self):
-        """
-        关闭数据库连接
-        """
-        self.conn.close()
+        return self.execute_command(command)
 
 
 if __name__ == '__main__':
@@ -94,5 +94,4 @@ if __name__ == '__main__':
     }
     sw.insert('test', data)
     db_data = sw.select('test', '*')
-    sw.close_con()
     print(db_data)
