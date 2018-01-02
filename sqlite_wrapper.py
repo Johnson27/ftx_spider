@@ -2,7 +2,6 @@ import sqlite3
 from exception_output import ExceptionOutput
 exception = ExceptionOutput()
 
-
 class SqliteWrapper(object):
     """
     数据库操作封装类,增删改查
@@ -41,11 +40,11 @@ class SqliteWrapper(object):
         输入一条记录到数据库
         """
         columns = values = ''
-        for key, value in data_dict:
+        for key, value in data_dict.items():
             if(isinstance(value, str)):
                 value = ''.join(["'", value, "'"])
             columns += ',' + key
-            values += ',' + value
+            values += ',' + str(value)
         columns = columns[1:]
         values = values[1:]
         command = 'insert into {table} ({columns}) values ({values})'.format(table=table,columns=columns,values=values)
@@ -86,3 +85,14 @@ class SqliteWrapper(object):
         """
         self.conn.close()
 
+
+if __name__ == '__main__':
+    sw = SqliteWrapper('ftx_xf.db')
+    data = {
+        'id': 4,
+        'name': 'Kobe',
+    }
+    sw.insert('test', data)
+    db_data = sw.select('test', '*')
+    sw.close_con()
+    print(db_data)
