@@ -32,7 +32,8 @@ news_id = 0
 exception = ExceptionOutput()
 
 db_ftx_xf = SqliteWrapper('ftx_xf.db')
-db_ftx_xf.create_table('create table xf_info(name TEXT PRIMARY KEY NOT NULL, status TEXT, price TEXT, location TEXT, phone TEXT, size TEXT)')
+db_ftx_xf.create_table('create table xf_info(name TEXT PRIMARY KEY NOT NULL, status TEXT, price TEXT, location TEXT, phone TEXT, size TEXT, '
+                       'area TEXT, decoration TEXT, park_num TEXT, house_num TEXT, service_fee TEXT, service_company TEXT, tree TEXT)')
 db_ftx_xf.create_table('create table news(id INT PRIMARY KEY NOT NULL, news_time TEXT, type INT, house_name TEXT, title TEXT, content TEXT)')
 
 
@@ -43,7 +44,6 @@ def do_spider_house_list(url):
     if url in spidered_list:
         return []
     spidered_list.append(url)
-    house_lists = []
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
         return
@@ -52,7 +52,7 @@ def do_spider_house_list(url):
     # 从每个item实体提取 名称、状态、价格、位置、电话
     threads = []
     for item in list_items:
-        t = threading.Thread(target=spider_house_list, args=(item, house_lists))
+        t = threading.Thread(target=spider_house_list, args=(item,))
         threads.append(t)
     for t in threads:
         t.start()
@@ -69,7 +69,7 @@ def do_spider_house_list(url):
     return
 
 
-def spider_house_list(item, house_lists):
+def spider_house_list(item):
     """
     新房list信息提取
     """
@@ -84,40 +84,66 @@ def spider_house_list(item, house_lists):
     house_dict['phone'] = item_phone.p.text if item_phone else None 
     # 获取每个item的detail信息
     item_link = item.find('div', 'nlcd_name').a['href']
-    house_detail = spider_house_detail(item_link, house_dict['name'])
-    house_dict['size'] = house_detail['size']
+    spider_house_detail(item_link, house_dict)
     db_ftx_xf.insert('xf_info', house_dict)
-    house_dict['news'] = house_detail['news']
     print(house_dict)
-    house_lists.append(house_dict)
 
 
-def spider_house_detail(url, name):
+def spider_house_detail(url, house_dict):
     """
     获取新房详情信息：房型、动态
     """
-    house_detail = {}
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
         return
-    house_detail['size'] = html_bs4.find('div', 'zlhx').text.strip()
+    size_origin = html_bs4.find('div', 'zlhx').text.strip()
+    size = ''
+    if size_origin == '暂无':
+        size = size_origin
+    else:
+        sizes = size_origin.split('\n\n')
+        for s in sizes:
+            m = re.match(r'(\w+)\([^\d]*(\d+).*\)', s)
+            g = m.groups()
+            size += g[0] + ':' + g[1] + ' '
+    house_dict['size'] = size
+    info_link = html_bs4.find('a', text='楼盘详情')['href']
+    detail_info = spider_detail_info(info_link)
+    for key in ['area', 'decoration', 'park_num', 'house_num', 'service_fee', 'service_company', 'tree']:
+        house_dict[key] = detail_info[key]
     news_link = html_bs4.find('a', title=re.compile(r'动态$'))['href']
     if 'http' not in news_link:
         news_link = 'http://newhouse.sh.fang.com/' + news_link
-    house_detail['news'] = spider_detail_news(news_link, name)
-    return house_detail
+    spider_detail_news(news_link, house_dict['name'])
+
+
+def spider_detail_info(url):
+    """
+    获取新房的一些详细信息：环线位置 装修情况 停车位 总户数 物业费 物业公司 绿化率
+    """
+    target_list = [('area', '环线位置'), ('decoration', '装修状况'), ('park_num', '停车位'), ('house_num', '总户数'), ('service_fee', '物业费描述'),
+                   ('service_company', '物业公司'), ('tree', '绿化率')]
+    detail_info = {}
+    html_bs4 = get_html_bs4(url)
+    labels = html_bs4.find_all('div', 'list-left')
+    for l in labels:
+        for key, text in target_list:
+            pattern_text = r'^' + text
+            pattern = re.compile(pattern_text)
+            if pattern.match(l.text.strip().replace(' ', '')):
+                node_content = l.parent.find('div', class_=re.compile(r'^list-right'))
+                detail_info[key] = node_content.text.strip().replace('\n', '').replace('\t', '')
+    return detail_info
 
 
 def spider_detail_news(url, name):
     """
     获取新房动态：动态、预售证、开盘
     """
-    house_news = {}
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
         return
     for info in ['blog', 'sale', 'open']:
-        house_news[info] = []
         news_items_root = html_bs4.find(id='gushi_' + info)
         if not news_items_root:
             continue
@@ -139,12 +165,6 @@ def spider_detail_news(url, name):
                 pinfo = item.find_all('p')
                 tmp_dict['content'] = pinfo[len(pinfo) - 1].string
             db_ftx_xf.insert('news', tmp_dict)
-            if info == 'sale':
-                if tmp_dict not in house_news[info]:
-                    house_news[info].append(tmp_dict)
-            else:
-                house_news[info].append(tmp_dict)
-    return house_news   
 
 
 def get_html_bs4(url):
