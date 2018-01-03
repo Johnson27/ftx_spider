@@ -62,7 +62,7 @@ class SqliteWrapper(object):
         """
         columns = values = ''
         for key, value in data_dict.items():
-            if(isinstance(value, str)):
+            if isinstance(value, str):
                 value = ''.join(["'", value, "'"])
             columns += ',' + key
             values += ',' + str(value)
