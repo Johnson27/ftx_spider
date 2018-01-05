@@ -192,11 +192,17 @@ def get_html_bs4(url):
 
 
 def clear_exception_log():
+    """
+    清空异常日志
+    """
     exception.exception_log_clear('spider_exception.txt')
     exception.exception_log_clear('sqlite_exception.txt')
 
 
 def spider_run():
+    """
+    程序运行入口
+    """
     clear_exception_log()
     for region in regions:
         base_url = BASE_URL + '/house/s/' + region + '/a77-b82/'

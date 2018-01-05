@@ -29,6 +29,9 @@ class SqliteWrapper(object):
         conn.close()
 
     def execute_command(self, command):
+        """
+        执行每一条数据库命令
+        """
         conn = self.get_conn()
         cursor = conn.cursor()
         lock.acquire()
