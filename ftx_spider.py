@@ -32,6 +32,8 @@ news_id = 0
 exception = ExceptionOutput()
 
 db_ftx_xf = SqliteWrapper('ftx_xf.db')
+db_ftx_xf.drop_table('xf_info')
+db_ftx_xf.drop_table('news')
 db_ftx_xf.create_table('create table xf_info(name TEXT PRIMARY KEY NOT NULL, status TEXT, price TEXT, location TEXT, phone TEXT, size TEXT, '
                        'area TEXT, decoration TEXT, park_num TEXT, house_num TEXT, service_fee TEXT, service_company TEXT, tree TEXT)')
 db_ftx_xf.create_table('create table news(id INT PRIMARY KEY NOT NULL, news_time TEXT, type INT, house_name TEXT, title TEXT, content TEXT)')
@@ -96,9 +98,10 @@ def spider_house_detail(url, house_dict):
     html_bs4 = get_html_bs4(url)
     if not html_bs4:
         return
-    size_origin = html_bs4.find('div', 'zlhx').text.strip()
+    size_zone = html_bs4.find('div', 'zlhx')
+    size_origin = size_zone.text.strip() if size_zone else None
     size = ''
-    if size_origin == '暂无':
+    if not size_origin or size_origin == '暂无':
         size = size_origin
     else:
         sizes = size_origin.split('\n\n')

@@ -59,6 +59,16 @@ class SqliteWrapper(object):
         self.execute_command(command)
         return 0
 
+    def drop_table(self, name):
+        """
+        删除表
+        """
+        if not name:
+            exception.sqlite_exception('Empty database name')
+            return -1
+        self.execute_command('drop table if exists {name}'.format(name=name))
+        return 0
+
     def insert(self, table, data_dict):
         """
         输入一条记录到数据库
