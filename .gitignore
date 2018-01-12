@@ -7,3 +7,7 @@ venv/
 *.txt
 
 *.db
+
+node_modules
+
+.DS_Store
