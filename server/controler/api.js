@@ -20,13 +20,15 @@ class FtxAPI {
         try {
             const newsList = await News.getRecentSaleNews();
             const preSaleList = await Promise.all(newsList.map(async news => {
-                return await House.getHouseByName(news.name);
+                const house = await House.getHouseByName(news.name);
+                house && (house.preSaleTime = news.time);
+                return house;
             }));
             ctx.body = {
                 preSaleList: preSaleList.filter(item => item)
             }
         } catch (err) {
-            console.log(err)
+            console.log(err);
             if (err.name === 'CastError' || err.name === 'NotFoundError') {
                 ctx.throw(404);
             }
@@ -40,6 +42,7 @@ class FtxAPI {
             const hasOpened = [], willOpen = [];
             for(let news of newsList) {
                 const house = await House.getHouseByName(news.name);
+                house && (house.time = news.time);
                 news.type === 1 ? hasOpened.push(house) : willOpen.push(house);
             }
             ctx.body = {
@@ -48,7 +51,7 @@ class FtxAPI {
                 hasOpenedList: hasOpened,
             }
         } catch (err) {
-            console.log(err)
+            console.log(err);
             if (err.name === 'CastError' || err.name === 'NotFoundError') {
                 ctx.throw(404);
             }
